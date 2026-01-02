@@ -1,0 +1,22 @@
+condition,bucket,has_bucket_error
+flash,Actions & Runners,0.4367588932806324
+flash,Expressions & Conditions,0.3557312252964427
+flash,Other,0.023715415019762844
+flash,Permissions & Security,0.07707509881422925
+flash,Shell / Execution,0.01383399209486166
+flash,Syntax & Structure,0.4189723320158103
+flash,Workflow Triggers,0.07509881422924901
+gold,Actions & Runners,0.45849802371541504
+gold,Expressions & Conditions,0.22924901185770752
+gold,Other,0.009881422924901186
+gold,Permissions & Security,0.05731225296442688
+gold,Shell / Execution,0.001976284584980237
+gold,Syntax & Structure,0.10474308300395258
+gold,Workflow Triggers,0.043478260869565216
+pro,Actions & Runners,0.3181818181818182
+pro,Expressions & Conditions,0.3221343873517787
+pro,Other,0.019762845849802372
+pro,Permissions & Security,0.029644268774703556
+pro,Shell / Execution,0.007905138339920948
+pro,Syntax & Structure,0.2984189723320158
+pro,Workflow Triggers,0.10474308300395258

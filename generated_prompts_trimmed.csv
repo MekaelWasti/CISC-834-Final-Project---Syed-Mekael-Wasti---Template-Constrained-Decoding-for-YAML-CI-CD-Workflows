@@ -1,0 +1,383 @@
+generated_prompt,Ground Truth Yaml,Rating (out of 10)
+"I need a GitHub Actions workflow to validate code snippets in my repository. It should be triggered manually, on pushes to the `main` branch, and on every pull request. I want to make sure that only one of these checks runs at a time for a given branch or workflow, canceling any in-progress runs if a new one starts.
+
+The job, named ""check-code-snippets"", should run on `ubuntu-22.04`. It needs to check out the repository, set up Python 3.13, and then install `requests` via pip. Finally, it should execute the validation script located at `./scripts/check_code_snippets.py` with the current directory as an argument.","name: check code snippets
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check-code-snippets:
+    name: check-code-snippets
+    runs-on:
+      - ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Setup python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests  
+      - name: Validate code snippets
+        run: |
+          python ./scripts/check_code_snippets.py .",6
+"I need a GitHub Actions workflow to generate e-books. It should trigger on pull requests to the `master` branch and also allow for manual runs.
+
+For pull requests, I want it to build several e-book formats and make them available as artifacts. Specifically, the job should run on `ubuntu-latest`, check out the repository, and then use `make run` and `make export` to create the e-books within a Docker container. After that, it needs to copy the generated `.epub`, `.mobi`, and two `.pdf` files (one standard, one A5) into an `artifacts/` directory.
+
+These artifacts should then be uploaded with a name like `ebooks-<commit_sha>` and retained for 7 days. If no files are found, the upload should fail.
+
+Finally, for pull requests originating from the same repository (not forks), the workflow should add a comment to the pull request linking to the generated artifacts.","name: Generate e-books
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch: {}  # For manual runs.
+
+jobs:
+  build-for-pr:
+    # For every PR, build the same artifacts and make them accessible from the PR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Export all supported book formats from the Docker container
+        run: |
+          make run
+          make export
+
+      - name: Copy generated files to host system
+        run: |
+          make cp
+          mkdir -p artifacts/
+          mv ""Linux Inside - 0xAX.epub"" \
+             ""Linux Inside - 0xAX.mobi"" \
+             ""Linux Inside - 0xAX.pdf"" \
+             ""Linux Inside - 0xAX (A5).pdf"" \
+             artifacts/
+
+      - name: Upload PR artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: ebooks-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          # Change the retention period here if necessary.
+          retention-days: 7
+
+      - name: Add a comment with a link to the generated artifacts.
+        # For forked PRs the token is read-only; skip commenting to avoid failures.
+        if: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
+        uses: actions/github-script@v8
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const body = [
+              `E-books generated for this pull request available at: ${process.env.RUN_URL}`
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });",6
+"I need a GitHub Actions workflow that automatically creates a new release whenever I push a tag matching the pattern `v*.*`. I'd also like the option to manually trigger this workflow.
+
+The workflow should run on Ubuntu and have permissions to write to the repository's contents.
+
+Here's what the workflow needs to do:
+1.  Check out the repository.
+2.  Run `make run` and then `make export` to generate all supported e-book formats using a Docker container.
+3.  After the files are generated, copy them to the host system. Specifically, it should move ""Linux Inside - 0xAX.epub"", ""Linux Inside - 0xAX.mobi"", ""Linux Inside - 0xAX.pdf"", and ""Linux Inside - 0xAX (A5).pdf"" into a directory named `artifacts/`. It should also copy the `LICENSE` file into this `artifacts/` directory.
+4.  Prepare the release metadata. If the workflow is triggered by a tag, use the tag name for the release label. Otherwise, use the short commit hash. The release name should be formatted as ""MM/DD/YYYY HH:MM (LABEL)"". The tag name for the release should just be the label.
+5.  Finally, create a GitHub release. This release should attach all the files from the `artifacts/` directory. The release name and tag name should be the ones determined in the previous step. It should also automatically generate release notes and fail if any specified files are not found.","name: Release e-books
+
+on:
+  push:
+    tags:
+      - 'v*.*' # Create a release only when a new tag matching v*.* is pushed.
+    # To also create a release for each push to the main branch, uncomment the following 2 lines:
+    # branches:
+    #   - master
+  workflow_dispatch: {}  # For manual runs.
+
+jobs:
+  release-ebooks:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Export all supported book formats from the Docker container
+        run: |
+          make run
+          make export
+
+      - name: Copy generated files to host system
+        run: |
+          make cp
+          mkdir -p artifacts/
+          mv ""Linux Inside - 0xAX.epub"" \
+             ""Linux Inside - 0xAX.mobi"" \
+             ""Linux Inside - 0xAX.pdf"" \
+             ""Linux Inside - 0xAX (A5).pdf"" \
+             artifacts/
+          cp LICENSE artifacts/
+
+      - name: Prepare release metadata
+        # Use tag name when running on a tag, otherwise fall back to the short commit hash.
+        id: meta
+        env:
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          DATE_UTC=""$(date -u '+%m/%d/%Y %H:%M')""
+          if [ ""${GITHUB_REF_TYPE}"" = ""tag"" ] && [ -n ""${GITHUB_REF_NAME}"" ]; then
+            LABEL=""${GITHUB_REF_NAME}""
+          else
+            LABEL=""$(git rev-parse --short HEAD)""
+          fi
+          echo ""release_name=${DATE_UTC} (${LABEL})"" >> ""$GITHUB_OUTPUT""
+          echo ""tag_name=${LABEL}"" >> ""$GITHUB_OUTPUT""
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          name: ${{ steps.meta.outputs.release_name }}
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true",7.5
+I need a GitHub Actions workflow that automatically adds a label to new pull requests. The label should match the name of the base branch the pull request is targeting. I also need to ensure the workflow has the necessary permissions to write to pull requests.,"
+name: General PR Handling for 1Panel
+on: pull_request
+permissions:
+  pull-requests: write
+jobs:
+  generic_handler:
+    name: Add Labels to PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUBTOKEN }}
+          labels: ${{ github.base_ref }}",3
+"I need a GitHub Actions workflow that creates a release and uploads assets when a new tag starting with 'v' is pushed.
+
+The workflow should run on Ubuntu and perform the following steps:
+1. Checkout the code.
+2. Set up Node.js version 22.19.0.
+3. Build the web frontend by navigating to the `frontend` directory, installing npm dependencies, and running the `build:pro` script. I need to set `NODE_OPTIONS` to `--max-old-space-size=8192` for this step.
+4. Set up Go version 1.24.
+5. Build the release using Goreleaser, specifically version 2, and pass `release --skip=publish --clean` as arguments.
+6. If the workflow is triggered by a tag, create a draft GitHub release and upload all `*.tar.gz` files and `checksums.txt` from the `dist/` directory as assets.
+7. Set up `ossutil` version 1.7.18, using provided secrets for `OSS_ENDPOINT`, `OSS_ACCESS_KEY_ID`, and `OSS_ACCESS_KEY_SECRET`.
+8. Upload the `*.tar.gz` and `checksums.txt` files from the `dist/` directory to an OSS bucket located at `oss://resource-fit2cloud-com/1panel/package/v2/stable/<tag_name>/release/`.","name: Create Release And Upload assets
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - name: Build Web
+        run: |
+          cd frontend && npm install && npm run build:pro
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build Release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --skip=publish --clean
+      - name: Upload Assets
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+      - name: Setup OSSUTIL
+        uses: yizhoumo/setup-ossutil@v2
+        with:
+          endpoint: ${{ secrets.OSS_ENDPOINT }}
+          access-key-id: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          ossutil-version: '1.7.18'
+      - name: Upload Assets to OSS
+        run: ossutil cp -r dist/ oss://resource-fit2cloud-com/1panel/package/v2/stable/${{ github.ref_name }}/release/ --include ""*.tar.gz"" --include ""checksums.txt"" --only-current-dir --force",
+"I need a GitHub Actions workflow that automatically creates a draft release and uploads assets to both GitHub and Cloudflare R2 whenever a new tag starting with `v` is pushed.
+
+The workflow should first check out the code and then set up Node.js version 22.19.0. After that, it needs to build the web frontend by navigating into the `frontend` directory, installing npm dependencies, and running the `build:pro` script. The Node.js build should have an increased memory limit of 8192 MB.
+
+Next, it should set up Go version 1.24 and then use Goreleaser to build the release, skipping the publish step and cleaning up afterward.
+
+Following the build, the workflow should create a draft GitHub release, but only if the push was a tag. This release should include all `*.tar.gz` files and `checksums.txt` from the `dist/` directory as assets.
+
+Finally, it needs to set up Rclone using a secret named `RCLONE_CONFIG` and then upload the `*.tar.gz` files and `checksums.txt` from the `dist/` directory to a Cloudflare R2 bucket. The destination path on R2 should be `package/v2/stable/<tag_name>/release/`.","name: Create Release And Upload Cloudflare R2
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - name: Build Web
+        run: |
+          cd frontend && npm install && npm run build:pro
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build Release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --skip=publish --clean
+      - name: Upload Assets
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+      - name: Setup Rclone
+        uses: AnimMouse/setup-rclone@v1
+        with:
+          rclone_config: ${{ secrets.RCLONE_CONFIG }}
+      - name: Upload to Cloudflare R2
+        run: |
+          rclone copy dist/ cloudflare_r2:package/v2/stable/${{ github.ref_name }}/release/ --include ""*.tar.gz"" --include ""checksums.txt"" --progress",
+"I need a GitHub Actions workflow that automatically translates the content of newly opened issues and newly created issue comments. The workflow should run on the latest Ubuntu environment and use the `usthe/issues-translate-action@v2.7`. It's important that the issue title also gets translated, and I will provide a `ISSUE_TRANSLATOR_TOKEN` as a secret for authentication.","name: Issue Translator
+on: 
+  issue_comment: 
+    types: [created]
+  issues: 
+    types: [opened]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: usthe/issues-translate-action@v2.7
+        with:
+          IS_MODIFY_TITLE: true
+          BOT_GITHUB_TOKEN: ${{ secrets.ISSUE_TRANSLATOR_TOKEN }} ",
+"I need a GitHub Actions workflow that automatically performs a code review using an LLM. It should be triggered whenever a pull request is opened, reopened, or synchronized. The workflow should run on the latest Ubuntu environment.
+
+For the code review, I want to use the `fit2cloud/LLM-CodeReview-Action@main` action. It needs access to a `GITHUB_TOKEN` (from `secrets.FIT2CLOUDRD_LLM_CODE_REVIEW_TOKEN`) and an `OPENAI_API_KEY` (from `secrets.ALIYUN_LLM_API_KEY`).
+
+The review should be conducted in English, and the OpenAI API endpoint should be set to `https://dashscope.aliyuncs.com/compatible-mode/v1`. I want to use the `qwen2.5-coder-3b-instruct` model.
+
+The prompt for the LLM should be: ""Please check the following code differences for any irregularities, potential issues, or optimization suggestions, and provide your answers in English.""
+
+I also need to configure `top_p` and `temperature` to `1`. The maximum patch length should be `10000`, and I want to ignore changes in `/node_modules`, `*.md`, `/dist`, and `/.github` files. Finally, the review should only apply to files matching `*.java, *.go, *.py, *.vue, *.ts, *.js, *.css, *.scss, *.html`. The workflow should have permissions to read contents and write pull request comments.","name: LLM Code Review
+permissions:
+  contents: read
+  pull-requests: write
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+jobs:
+  llm-code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: fit2cloud/LLM-CodeReview-Action@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.FIT2CLOUDRD_LLM_CODE_REVIEW_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.ALIYUN_LLM_API_KEY }}
+          LANGUAGE: English
+          OPENAI_API_ENDPOINT: https://dashscope.aliyuncs.com/compatible-mode/v1
+          MODEL: qwen2.5-coder-3b-instruct
+          PROMPT: ""Please check the following code differences for any irregularities, potential issues, or optimization suggestions, and provide your answers in English.""
+          top_p: 1
+          temperature: 1
+          # max_tokens: 10000
+          MAX_PATCH_LENGTH: 10000 
+          IGNORE_PATTERNS: ""/node_modules,*.md,/dist,/.github""
+          FILE_PATTERNS: ""*.java,*.go,*.py,*.vue,*.ts,*.js,*.css,*.scss,*.html""",
+"I need a GitHub Actions workflow that automatically scans my code with SonarCloud. It should trigger on pushes to the `dev` branch and also when pull requests are opened, synchronized, or reopened. The workflow should check out the code with a full fetch depth and then run the SonarCloud scan using the provided GitHub and Sonar tokens.","name: SonarCloud Scan
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUBTOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+"I need a GitHub Actions workflow that automatically synchronizes my GitHub repository to Gitee. The workflow should be triggered on every push event. It should mirror the `1Panel` repository from my `1Panel-dev` GitHub organization to the `fit2cloud-feizhiyun` organization on Gitee. I'll need to use `GITEE_PRIVATE_KEY` and `GITEE_TOKEN` from my secrets for authentication, and it should force update the destination.","name: Synchronize to Gitee
+on: [push]
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror the Github organization repos to Gitee.
+        uses: Yikun/hub-mirror-action@master
+        with:
+          src: 'github/1Panel-dev'
+          dst: 'gitee/fit2cloud-feizhiyun'
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
+          dst_token:  ${{ secrets.GITEE_TOKEN }}
+          static_list: ""1Panel""
+          force_update: true",

@@ -1,3 +1,19 @@
+# Mine
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+/Other/workflows_aux/workflows_auxiliaries/*
+generated_workflows/*
+sample_workflows/*
+sample_workflows_rq1/*
+workflows/*
+
+# Environment files
+.env
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

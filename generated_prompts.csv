@@ -1,0 +1,8 @@
+generated_prompt
+"I need a GitHub Actions workflow to automatically check code snippets in my `linux-insides` repository.
+
+The workflow should run whenever there's a push to the `main` branch, on every pull request, and I also want to be able to trigger it manually.
+
+It should use an `ubuntu-22.04` environment. I want it to check out my repository first, then set up Python 3.13. After that, it needs to install `requests` using pip. Finally, it should execute the `check_code_snippets.py` script located in the `scripts/` directory, passing the current directory as an argument to validate the snippets.
+
+I'd like to make sure that only one job runs at a time for this workflow; if a new run is triggered while an old one is still in progress for the same branch or workflow, the older one should be canceled. Let's call the job `check-code-snippets`."
